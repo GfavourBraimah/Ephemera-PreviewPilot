@@ -1,0 +1,33 @@
+# Terraform files
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# AWS credentials (if accidentally added)
+*.pem
+*.key
+.aws/
+
+# Logs
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Node.js (if applicable)
+node_modules/
+
+# Python (if applicable)
+__pycache__/
+*.pyc
+*.pyo
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# IDE/Editor files
+.vscode/
+.idea/
