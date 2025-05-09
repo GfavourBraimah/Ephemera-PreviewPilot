@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ Step 2: Configure AWS credentials
+      # ✅ Step 2: Configure AWS credentials globally
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -41,7 +41,7 @@ jobs:
         working-directory: terraform
         run: terraform init
 
-      # Step 5: Apply or Destroy Infrastructure
+      # ✅ Step 5: Apply or Destroy Infrastructure (NO env override!)
       - name: Apply or Destroy Infrastructure
         working-directory: terraform
         run: |
@@ -64,13 +64,13 @@ jobs:
           terraform output -raw ecr_repository_url > ecr_url.txt
           cat ecr_url.txt
 
-      # Step 7: Login to Amazon ECR
+      # Step 7: Log in to Amazon ECR
       - name: Log in to Amazon ECR
         if: ${{ github.event.inputs.action == 'create' }}
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # Step 8: Build, Tag, and Push Docker Image
+      # ✅ Step 8: Build, Tag, and Push Docker Image (no manual AWS env needed)
       - name: Build, Tag, and Push Docker Image
         if: ${{ github.event.inputs.action == 'create' }}
         env:
