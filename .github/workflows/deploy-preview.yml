@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ Step 2: Configure AWS credentials globally
+      # Step 2: Configure AWS credentials globally
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -41,7 +41,7 @@ jobs:
         working-directory: terraform
         run: terraform init
 
-      # ✅ Step 5: Apply or Destroy Infrastructure (NO env override!)
+      # Step 5: Apply or Destroy Infrastructure
       - name: Apply or Destroy Infrastructure
         working-directory: terraform
         run: |
@@ -72,7 +72,7 @@ jobs:
         with:
           region: "us-east-1"
 
-      # ✅ Step 8: Build, Tag, and Push Docker Image (no manual AWS env needed)
+      # Step 8: Build, Tag, and Push Docker Image
       - name: Build, Tag, and Push Docker Image
         if: ${{ github.event.inputs.action == 'create' }}
         env:
@@ -80,7 +80,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           ECR_REPO=$(terraform -chdir=terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
-          docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG ./docker
+          docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -f docker/Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
 
       # Step 9: Deploy to ECS
