@@ -1,7 +1,8 @@
 # Define the AWS provider
 provider "aws" {
-  region = us-east-1 # Replace with your preferred region
+  region = "us-east-1" # Make sure this is a string
 }
+
 
 # Create the ECR repository
 resource "aws_ecr_repository" "my_furniture_repo" {
