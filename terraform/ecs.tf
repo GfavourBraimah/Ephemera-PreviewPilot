@@ -3,37 +3,24 @@ resource "aws_ecs_cluster" "my_furniture_cluster" {
   name = var.ecs_cluster_name
 }
 
-# Define the Task Execution IAM Role
-resource "aws_iam_role" "ecs_task_execution_role" {
+# ✅ Reuse Existing IAM Role Instead of Creating a New One
+data "aws_iam_role" "ecs_task_execution_role" {
   name = "${var.ecs_cluster_name}-task-execution-role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole",
-        Effect = "Allow",
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
 }
 
-# Attach necessary policies for the ECS Task Execution Role
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
-  role       = aws_iam_role.ecs_task_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
+# ✅ Skip IAM Role Creation and Attachment Since We're Using Existing Role
+# Commented out:
+# resource "aws_iam_role" "ecs_task_execution_role" { ... }
+# resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" { ... }
 
 # Create an ECS Task Definition
 resource "aws_ecs_task_definition" "my_furniture_task" {
   family                   = var.ecs_task_family
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  cpu                      = "256"            # Adjust CPU for your needs
-  memory                   = "512"            # Adjust memory for your needs
+  execution_role_arn       = data.aws_iam_role.ecs_task_execution_role.arn
+  cpu                      = "256"
+  memory                   = "512"
   container_definitions    = jsonencode([
     {
       name      = "my-furniture-container"
