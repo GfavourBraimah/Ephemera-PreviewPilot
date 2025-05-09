@@ -1,15 +1,14 @@
 # Define the AWS provider
 provider "aws" {
-  region = "us-east-1" # Make sure this is a string
+  region = "us-east-1" # Must be a string
 }
-
 
 # Create the ECR repository
 resource "aws_ecr_repository" "my_furniture_repo" {
   name                 = var.ecr_repository_name
-  image_tag_mutability = "MUTABLE" # Allow mutable tags for the repository
+  image_tag_mutability = "MUTABLE"
   image_scanning_configuration {
-    scan_on_push = true # Enable image scanning on push
+    scan_on_push = true
   }
 }
 
