@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
+      # Step 1: Checkout repository
       - name: Checkout Code
         uses: actions/checkout@v3
 
@@ -30,7 +30,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # Step 3: Set up Terraform
+      # Step 3: Set up Terraform CLI
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -56,16 +56,15 @@ jobs:
             exit 1
           fi
 
-      # Step 6: Log Terraform Outputs (Only for Create Action)
+      # Step 6: Get Terraform Outputs (only on create)
       - name: Log Terraform Outputs
         if: ${{ github.event.inputs.action == 'create' }}
         working-directory: terraform
         run: |
-          echo "ECR Repository URL: $(terraform output -raw ecr_repository_url)"
-          echo "ECS Service Name: $(terraform output -raw ecs_service_name)"
-          echo "ECS Cluster Name: $(terraform output -raw ecs_cluster_name)"
+          terraform output -raw ecr_repository_url > ecr_url.txt
+          cat ecr_url.txt
 
-      # Step 7: Log in to Amazon ECR
+      # Step 7: Login to Amazon ECR
       - name: Log in to Amazon ECR
         if: ${{ github.event.inputs.action == 'create' }}
         id: login-ecr
@@ -78,10 +77,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Set the repository name from Terraform output
-          ECR_REPOSITORY=$(terraform -chdir=terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./docker
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          ECR_REPO=$(terraform -chdir=terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
+          docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG ./docker
+          docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
 
       # Step 9: Deploy to ECS
       - name: Deploy to ECS
