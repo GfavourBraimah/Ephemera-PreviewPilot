@@ -83,7 +83,39 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -f docker/Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
 
-      # Step 9: Deploy to ECS
+      # Step 9: Generate ECS Task Definition
+      - name: Generate ECS Task Definition
+        if: ${{ github.event.inputs.action == 'create' }}
+        run: |
+          cat <<EOF > terraform/ecs-task-definition.json
+          {
+            "family": "my-furniture-task",
+            "networkMode": "awsvpc",
+            "containerDefinitions": [
+              {
+                "name": "my-furniture-container",
+                "image": "${{ steps.login-ecr.outputs.registry }}/my-furniture-repo:${{ github.sha }}",
+                "essential": true,
+                "memory": 512,
+                "cpu": 256,
+                "portMappings": [
+                  {
+                    "containerPort": 80,
+                    "hostPort": 80,
+                    "protocol": "tcp"
+                  }
+                ]
+              }
+            ],
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "<EXECUTION_ROLE_ARN>",
+            "taskRoleArn": "<TASK_ROLE_ARN>"
+          }
+          EOF
+
+      # Step 10: Deploy to ECS
       - name: Deploy to ECS
         if: ${{ github.event.inputs.action == 'create' }}
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
