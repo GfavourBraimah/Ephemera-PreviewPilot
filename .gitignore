@@ -5,7 +5,7 @@ terraform.tfstate.backup
 .terraform/
 .terraform.lock.hcl
 
-# AWS credentials (if accidentally added)
+# AWS credentials (if accidentally, added)
 *.pem
 *.key
 .aws/
