@@ -28,7 +28,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: "us-east-1"
 
       # Step 3: Set up Terraform CLI
       - name: Set up Terraform
@@ -70,7 +70,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         with:
-          region: us-east-1
+          region: "us-east-1"
 
       # ✅ Step 8: Build, Tag, and Push Docker Image (no manual AWS env needed)
       - name: Build, Tag, and Push Docker Image
