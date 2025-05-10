@@ -1,28 +1,20 @@
-name: Deploy to ECS with Terraform
+name: CI/CD Pipeline
 
 on:
-  workflow_dispatch:
-    inputs:
-      action:
-        description: "Choose whether to create or destroy the environment"
-        required: true
-        default: "create"
-        type: choice
-        options:
-          - create
-          - destroy
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
-  deploy:
-    name: Deploy or Destroy Environment
+  build-and-deploy:
+    if: ${{ github.event.action != 'closed' }}
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout the repository
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # Step 2: Configure AWS credentials globally
+      # Step 2: Configure AWS credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -30,97 +22,51 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: "us-east-1"
 
-      # Step 3: Set up Terraform CLI
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_wrapper: false
-
-      # Step 4: Initialize Terraform
-      - name: Initialize Terraform
-        working-directory: terraform
-        run: terraform init
-
-      # Step 5: Apply or Destroy Infrastructure
-      - name: Apply or Destroy Infrastructure
-        working-directory: terraform
+      # Step 3: Create ECR Repository
+      - name: Create ECR Repository
+        working-directory: terraform/ecr
+        id: create-ecr
         run: |
-          if [ "${{ github.event.inputs.action }}" == "create" ]; then
-            echo "Creating the environment..."
-            terraform apply -auto-approve
-          elif [ "${{ github.event.inputs.action }}" == "destroy" ]; then
-            echo "Destroying the environment..."
-            terraform destroy -auto-approve
-          else
-            echo "Invalid action! Please choose 'create' or 'destroy'."
-            exit 1
-          fi
+          terraform init
+          terraform apply -auto-approve
 
-      # Step 6: Get Terraform Outputs (only on create)
-      - name: Log Terraform Outputs
-        if: ${{ github.event.inputs.action == 'create' }}
-        working-directory: terraform
-        run: |
-          terraform output -raw ecr_repository_url > ecr_url.txt
-          cat ecr_url.txt
-
-      # Step 7: Log in to Amazon ECR
-      - name: Log in to Amazon ECR
-        if: ${{ github.event.inputs.action == 'create' }}
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-        with:
-          region: "us-east-1"
-
-      # Step 8: Build, Tag, and Push Docker Image
-      - name: Build, Tag, and Push Docker Image
-        if: ${{ github.event.inputs.action == 'create' }}
+      # Step 4: Build and Push Docker Image
+      - name: Build and Push Docker Image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REGISTRY: ${{ steps.create-ecr.outputs.ecr_repository_url }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          ECR_REPO=$(terraform -chdir=terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
-          docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -f docker/Dockerfile .
-          docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY:latest .
+          docker tag $ECR_REGISTRY:latest $ECR_REGISTRY:${{ github.sha }}
+          docker push $ECR_REGISTRY:${{ github.sha }}
 
-      # Step 9: Generate ECS Task Definition
-      - name: Generate ECS Task Definition
-        if: ${{ github.event.inputs.action == 'create' }}
+      # Step 5: Deploy EC2 Instance
+      - name: Deploy EC2 Instance
+        working-directory: terraform/ec2
         run: |
-          cat <<EOF > terraform/ecs-task-definition.json
-          {
-            "family": "my-furniture-task",
-            "networkMode": "awsvpc",
-            "containerDefinitions": [
-              {
-                "name": "my-furniture-container",
-                "image": "${{ steps.login-ecr.outputs.registry }}/my-furniture-repo:${{ github.sha }}",
-                "essential": true,
-                "memory": 512,
-                "cpu": 256,
-                "portMappings": [
-                  {
-                    "containerPort": 80,
-                    "hostPort": 80,
-                    "protocol": "tcp"
-                  }
-                ]
-              }
-            ],
-            "requiresCompatibilities": ["FARGATE"],
-            "cpu": "256",
-            "memory": "512",
-            "executionRoleArn": "<EXECUTION_ROLE_ARN>",
-            "taskRoleArn": "<TASK_ROLE_ARN>"
-          }
-          EOF
+          terraform init
+          terraform apply -auto-approve \
+            -var="ecr_repository_url=${{ steps.create-ecr.outputs.ecr_repository_url }}" \
+            -var="image_tag=${{ github.sha }}"
 
-      # Step 10: Deploy to ECS
-      - name: Deploy to ECS
-        if: ${{ github.event.inputs.action == 'create' }}
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+  destroy:
+    if: ${{ github.event.action == 'closed' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Configure AWS credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          task-definition: terraform/ecs-task-definition.json
-          service: my-furniture-service
-          cluster: my-furniture-cluster
-          wait-for-service-stability: true
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: "us-east-1"
+
+      # Step 3: Destroy the Preview Environment
+      - name: Destroy with Terraform
+        working-directory: terraform/ec2
+        run: terraform destroy -auto-approve
