@@ -22,7 +22,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: "us-east-1"
 
-      # Step 3: Create ECR Repository
+      # Step 3: Set up Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
+
+      # Step 4: Create ECR Repository
       - name: Create ECR Repository
         working-directory: terraform/ecr
         id: create-ecr
@@ -30,7 +36,7 @@ jobs:
           terraform init
           terraform apply -auto-approve
 
-      # Step 4: Build and Push Docker Image
+      # Step 5: Build and Push Docker Image
       - name: Build and Push Docker Image
         env:
           ECR_REGISTRY: ${{ steps.create-ecr.outputs.ecr_repository_url }}
@@ -40,7 +46,7 @@ jobs:
           docker tag $ECR_REGISTRY:latest $ECR_REGISTRY:${{ github.sha }}
           docker push $ECR_REGISTRY:${{ github.sha }}
 
-      # Step 5: Deploy EC2 Instance
+      # Step 6: Deploy EC2 Instance
       - name: Deploy EC2 Instance
         working-directory: terraform/ec2
         run: |
