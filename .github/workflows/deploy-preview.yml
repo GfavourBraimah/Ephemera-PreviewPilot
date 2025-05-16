@@ -1,72 +1,73 @@
-name: CI/CD Pipeline
+name: Preview Environment Pipeline
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, closed]
 
 jobs:
-  build-and-deploy:
-    if: ${{ github.event.action != 'closed' }}
+  deploy_preview:
+    if: github.event.action == 'opened'
+    name: Create Preview Environment
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@v3
 
-      # Step 2: Configure AWS credentials
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: "us-east-1"
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
 
-      # Step 3: Create ECR Repository
-      - name: Create ECR Repository
-        working-directory: terraform/ecr
-        id: create-ecr
-        run: |
-          terraform init
-          terraform apply -auto-approve
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
 
-      # Step 4: Build and Push Docker Image
-      - name: Build and Push Docker Image
-        env:
-          ECR_REGISTRY: ${{ steps.create-ecr.outputs.ecr_repository_url }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY:latest .
-          docker tag $ECR_REGISTRY:latest $ECR_REGISTRY:${{ github.sha }}
-          docker push $ECR_REGISTRY:${{ github.sha }}
+    - name: Terraform Init
+      working-directory: terraform
+      run: terraform init
 
-      # Step 5: Deploy EC2 Instance
-      - name: Deploy EC2 Instance
-        working-directory: terraform/ec2
-        run: |
-          terraform init
-          terraform apply -auto-approve \
-            -var="ecr_repository_url=${{ steps.create-ecr.outputs.ecr_repository_url }}" \
-            -var="image_tag=${{ github.sha }}"
+    - name: Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve
 
-  destroy:
-    if: ${{ github.event.action == 'closed' }}
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build and Push Docker Image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        ECR_REPO=$(terraform -chdir=terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
+        docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -f docker/Dockerfile docker
+        docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+
+  destroy_preview:
+    if: github.event.action == 'closed'
+    name: Destroy Preview Environment
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@v3
 
-      # Step 2: Configure AWS credentials
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: "us-east-1"
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
 
-      # Step 3: Destroy the Preview Environment
-      - name: Destroy with Terraform
-        working-directory: terraform/ec2
-        run: terraform destroy -auto-approve
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Terraform Init
+      working-directory: terraform
+      run: terraform init
+
+    - name: Terraform Destroy
+      working-directory: terraform
+      run: terraform destroy -auto-approve
