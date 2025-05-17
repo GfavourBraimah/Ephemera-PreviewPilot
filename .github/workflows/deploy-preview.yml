@@ -1,12 +1,11 @@
-name: Preview Environment Pipeline
+name: Preview Deploy
 
 on:
   pull_request:
-    types: [opened, closed]
+    types: [opened, synchronize]
 
 jobs:
   deploy_preview:
-    if: github.event.action == 'opened'
     name: Create Preview Environment
     runs-on: ubuntu-latest
 
@@ -33,41 +32,16 @@ jobs:
       run: terraform apply -auto-approve
 
     - name: Login to Amazon ECR
-      id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
+      id: login-ecr
 
     - name: Build and Push Docker Image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        ECR_REPO=$(terraform -chdir=terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
+        cd terraform
+        ECR_REPO=$(terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
+        cd ..
         docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -f docker/Dockerfile docker
         docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
-
-  destroy_preview:
-    if: github.event.action == 'closed'
-    name: Destroy Preview Environment
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-
-    - name: Terraform Init
-      working-directory: terraform
-      run: terraform init
-
-    - name: Terraform Destroy
-      working-directory: terraform
-      run: terraform destroy -auto-approve
