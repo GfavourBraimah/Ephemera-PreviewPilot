@@ -1,47 +1,62 @@
-name: Preview Deploy
+name: Manage Preview Environment
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What action do you want to perform?'
+        required: true
+        default: 'create'
+        type: choice
+        options:
+          - create
+          - destroy
 
 jobs:
-  deploy_preview:
-    name: Create Preview Environment
+  manage_environment:
     runs-on: ubuntu-latest
-
+    name: Manage Environment
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
 
-    - name: Terraform Init
-      working-directory: terraform
-      run: terraform init
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
 
-    - name: Terraform Apply
-      working-directory: terraform
-      run: terraform apply -auto-approve
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.action == 'create' }}
+        working-directory: terraform
+        run: terraform apply -auto-approve
 
-    - name: Login to Amazon ECR
-      uses: aws-actions/amazon-ecr-login@v1
-      id: login-ecr
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        working-directory: terraform
+        run: terraform destroy -auto-approve
 
-    - name: Build and Push Docker Image
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        cd terraform
-        ECR_REPO=$(terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
-        cd ..
-        docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -f docker/Dockerfile docker
-        docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+      - name: Login to Amazon ECR
+        if: ${{ github.event.inputs.action == 'create' }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Push Docker Image
+        if: ${{ github.event.inputs.action == 'create' }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd terraform
+          ECR_REPO=$(terraform output -raw ecr_repository_url | sed 's|.*amazonaws.com/||')
+          cd ..
+          docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG -f docker/Dockerfile docker
+          docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
