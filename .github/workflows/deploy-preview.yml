@@ -1,24 +1,16 @@
 name: Manage Preview Environment
 
 on:
-  workflow_dispatch:
-    inputs:
-      action:
-        description: 'What action do you want to perform?'
-        required: true
-        default: 'create'
-        type: choice
-        options:
-          - create
-          - destroy
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   manage_environment:
     runs-on: ubuntu-latest
-    name: Manage Environment
+    name: Manage Preview Environment
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Configure AWS Credentials
@@ -35,33 +27,50 @@ jobs:
         working-directory: terraform
         run: terraform init
 
+      # If PR is opened or updated, apply infrastructure
       - name: Terraform Apply
-        if: ${{ github.event.inputs.action == 'create' }}
+        if: github.event.action != 'closed'
         working-directory: terraform
         run: terraform apply -auto-approve
 
+      # If PR is closed, destroy infrastructure
       - name: Terraform Destroy
-        if: ${{ github.event.inputs.action == 'destroy' }}
+        if: github.event.action == 'closed'
         working-directory: terraform
         run: terraform destroy -auto-approve
 
+      # Only build/deploy if creating or updating PR
       - name: Login to Amazon ECR
-        if: ${{ github.event.inputs.action == 'create' }}
+        if: github.event.action != 'closed'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Extract ECR Repository URL
-        if: ${{ github.event.inputs.action == 'create' }}
-        id: extract-ecr
+      - name: Get ECR Repo URL
+        if: github.event.action != 'closed'
         working-directory: terraform
         run: |
-          echo "REPO_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
+          REPO_URL=$(terraform output -raw ecr_repository_url 2> /dev/null)
+          echo "REPO_URL=$REPO_URL" >> $GITHUB_ENV
 
       - name: Build and Push Docker Image
-        if: ${{ github.event.inputs.action == 'create' }}
+        if: github.event.action != 'closed'
         env:
           IMAGE_TAG: ${{ github.sha }}
           REPO_URL: ${{ env.REPO_URL }}
         run: |
           docker build -t $REPO_URL:$IMAGE_TAG -f docker/Dockerfile docker
           docker push $REPO_URL:$IMAGE_TAG
+
+      - name: Update ECS Service to Use New Image
+        if: github.event.action != 'closed'
+        env:
+          CLUSTER_NAME: my-fargate-cluster
+          SERVICE_NAME: my-preview-service
+          IMAGE_TAG: ${{ github.sha }}
+          REPO_URL: ${{ env.REPO_URL }}
+        run: |
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME \
+            --force-new-deployment \
+            --region us-east-1
