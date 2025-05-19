@@ -3,6 +3,8 @@ name: Manage Preview Environment
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
+  pull_request_target:
+    types: [closed]
 
 env:
   AWS_REGION: us-east-1
@@ -41,13 +43,26 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve -input=false
 
-   
-    
-      # If PR is closed, destroy infrastructure
-      - name: Terraform Destroy
+      # Check if PR was merged or just closed
+      - name: Check Merge Status
         if: github.event.action == 'closed'
+        id: check_merge
+        run: |
+          if [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            echo "::notice::PR was merged, destroying environment"
+            echo "should_destroy=true" >> $GITHUB_OUTPUT
+          else
+            echo "::notice::PR was closed without merge, destroying environment"
+            echo "should_destroy=true" >> $GITHUB_OUTPUT
+          fi
+
+      # Destroy infrastructure if PR closed (merged or not)
+      - name: Terraform Destroy
+        if: steps.check_merge.outputs.should_destroy == 'true'
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform destroy -auto-approve -input=false
+        run: |
+          echo "Destroying preview environment..."
+          terraform destroy -auto-approve -input=false
 
       # Only build/deploy if creating or updating PR
       - name: Login to Amazon ECR
@@ -81,8 +96,8 @@ jobs:
                        -t ${{ steps.tf-outputs.outputs.repo_url }}:latest \
                        -f ${{ env.DOCKERFILE_PATH }} \
                        ${{ env.DOCKER_BUILD_CONTEXT }}
-                       docker push ${{ steps.tf-outputs.outputs.repo_url }}:${{ env.IMAGE_TAG }}
-                       docker push ${{ steps.tf-outputs.outputs.repo_url }}:latest
+          docker push ${{ steps.tf-outputs.outputs.repo_url }}:${{ env.IMAGE_TAG }}
+          docker push ${{ steps.tf-outputs.outputs.repo_url }}:latest
 
       - name: Update ECS Service
         if: github.event.action != 'closed'
@@ -92,6 +107,44 @@ jobs:
             --service ${{ steps.tf-outputs.outputs.service_name }} \
             --force-new-deployment \
             --region ${{ env.AWS_REGION }}
+
+      - name: Get Public IP
+        if: github.event.action != 'closed'
+        id: get_ip
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          # Get cluster name
+          CLUSTER=$(terraform output -raw ecs_cluster_name)
+          
+          # Get service name
+          SERVICE=$(terraform output -raw ecs_service_name)
+          
+          # Wait for task to start running
+          echo "Waiting for task to start..."
+          aws ecs wait tasks-running \
+            --cluster $CLUSTER \
+            --tasks $(aws ecs list-tasks \
+              --cluster $CLUSTER \
+              --service-name $SERVICE \
+              --query 'taskArns' \
+              --output text) \
+            --region ${{ env.AWS_REGION }}
+          
+          # Get public IP
+          TASK_ARN=$(aws ecs list-tasks \
+            --cluster $CLUSTER \
+            --service-name $SERVICE \
+            --query 'taskArns[0]' \
+            --output text)
+          
+          PUBLIC_IP=$(aws ecs describe-tasks \
+            --cluster $CLUSTER \
+            --tasks $TASK_ARN \
+            --query 'tasks[0].attachments[0].details[?name==`publicIPv4Address`].value' \
+            --output text)
+          
+          echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+          echo "::notice::Application URL: http://$PUBLIC_IP"
 
       - name: Verify Deployment
         if: github.event.action != 'closed'
