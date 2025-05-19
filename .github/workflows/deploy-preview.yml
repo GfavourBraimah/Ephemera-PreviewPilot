@@ -37,13 +37,11 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -input=false
 
-      # If PR is opened or updated, apply infrastructure
       - name: Terraform Apply
         if: github.event.action != 'closed'
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve -input=false
 
-      # Check if PR was merged or just closed
       - name: Check Merge Status
         if: github.event.action == 'closed'
         id: check_merge
@@ -56,7 +54,6 @@ jobs:
             echo "should_destroy=true" >> $GITHUB_OUTPUT
           fi
 
-      # Destroy infrastructure if PR closed (merged or not)
       - name: Terraform Destroy
         if: steps.check_merge.outputs.should_destroy == 'true'
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -64,7 +61,6 @@ jobs:
           echo "Destroying preview environment..."
           terraform destroy -auto-approve -input=false
 
-      # Only build/deploy if creating or updating PR
       - name: Login to Amazon ECR
         if: github.event.action != 'closed'
         id: login-ecr
@@ -79,8 +75,7 @@ jobs:
           echo "cluster_name=$(jq -r '.ecs_cluster_name.value' tf_output.json)" >> $GITHUB_OUTPUT
           echo "service_name=$(jq -r '.ecs_service_name.value' tf_output.json)" >> $GITHUB_OUTPUT
           echo "repo_url=$(jq -r '.ecr_repository_url.value' tf_output.json)" >> $GITHUB_OUTPUT
-          
-          # Validate ECR URL format
+
           REPO_URL=$(jq -r '.ecr_repository_url.value' tf_output.json)
           if [[ ! "$REPO_URL" =~ ^[0-9]+\.dkr\.ecr\..*\.amazonaws\.com/.* ]]; then
             echo "::error::Invalid ECR repository URL format: $REPO_URL"
@@ -108,44 +103,6 @@ jobs:
             --force-new-deployment \
             --region ${{ env.AWS_REGION }}
 
-      - name: Get Public IP
-        if: github.event.action != 'closed'
-        id: get_ip
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          # Get cluster name
-          CLUSTER=$(terraform output -raw ecs_cluster_name)
-          
-          # Get service name
-          SERVICE=$(terraform output -raw ecs_service_name)
-          
-          # Wait for task to start running
-          echo "Waiting for task to start..."
-          aws ecs wait tasks-running \
-            --cluster $CLUSTER \
-            --tasks $(aws ecs list-tasks \
-              --cluster $CLUSTER \
-              --service-name $SERVICE \
-              --query 'taskArns' \
-              --output text) \
-            --region ${{ env.AWS_REGION }}
-          
-          # Get public IP
-          TASK_ARN=$(aws ecs list-tasks \
-            --cluster $CLUSTER \
-            --service-name $SERVICE \
-            --query 'taskArns[0]' \
-            --output text)
-          
-          PUBLIC_IP=$(aws ecs describe-tasks \
-            --cluster $CLUSTER \
-            --tasks $TASK_ARN \
-            --query 'tasks[0].attachments[0].details[?name==`publicIPv4Address`].value' \
-            --output text)
-          
-          echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
-          echo "::notice::Application URL: http://$PUBLIC_IP"
-
       - name: Verify Deployment
         if: github.event.action != 'closed'
         run: |
@@ -153,3 +110,60 @@ jobs:
             --cluster ${{ steps.tf-outputs.outputs.cluster_name }} \
             --services ${{ steps.tf-outputs.outputs.service_name }} \
             --region ${{ env.AWS_REGION }}
+
+      - name: Get Public IP
+        if: github.event.action != 'closed'
+        id: get_ip
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        timeout-minutes: 5
+        run: |
+          CLUSTER=$(terraform output -raw ecs_cluster_name)
+          SERVICE=$(terraform output -raw ecs_service_name)
+
+          echo "Waiting for ECS service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --region "${{ env.AWS_REGION }}" || \
+            echo "::warning::Service took longer than expected to stabilize"
+
+          TASK_ARN=$(aws ecs list-tasks \
+            --cluster "$CLUSTER" \
+            --service-name "$SERVICE" \
+            --query 'taskArns[0]' \
+            --output text)
+
+          if [ "$TASK_ARN" = "None" ] || [ -z "$TASK_ARN" ]; then
+            echo "::error::No running ECS task found."
+            exit 1
+          fi
+
+          echo "Task ARN: $TASK_ARN"
+
+          ENI_ID=$(aws ecs describe-tasks \
+            --cluster "$CLUSTER" \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].attachments[?type==`ElasticNetworkInterface`].details[?name==`networkInterfaceId`].value' \
+            --output text)
+
+          echo "Network Interface ID: $ENI_ID"
+
+          TRIES=0
+          PUBLIC_IP=""
+          while [ -z "$PUBLIC_IP" ] && [ $TRIES -lt 6 ]; do
+            echo "Attempt $((TRIES + 1)) to get public IP..."
+            PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+              --network-interface-ids "$ENI_ID" \
+              --query 'NetworkInterfaces[0].Association.PublicIp' \
+              --output text)
+            sleep 10
+            TRIES=$((TRIES + 1))
+          done
+
+          if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" = "None" ]; then
+            echo "::error::Failed to retrieve public IP after retries"
+            exit 1
+          fi
+
+          echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+          echo "::notice::Application URL: http://$PUBLIC_IP"

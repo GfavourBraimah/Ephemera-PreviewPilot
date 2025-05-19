@@ -2,7 +2,7 @@
 
 set -e
 
-BUCKET_NAME="terraform"
+BUCKET_NAME="terraform" # Replace with your unique bucket name
 REGION="us-east-1"
 DYNAMO_TABLE="terraform-lock-table"
 
