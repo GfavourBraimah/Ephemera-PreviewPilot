@@ -4,6 +4,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
+env:
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: terraform
+  DOCKERFILE_PATH: docker/Dockerfile
+  DOCKER_BUILD_CONTEXT: docker
+
 jobs:
   manage_environment:
     runs-on: ubuntu-latest
@@ -18,26 +24,28 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
 
       - name: Terraform Init
-        working-directory: terraform
-        run: terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init -input=false
 
       # If PR is opened or updated, apply infrastructure
       - name: Terraform Apply
         if: github.event.action != 'closed'
-        working-directory: terraform
-        run: terraform apply -auto-approve
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve -input=false
 
       # If PR is closed, destroy infrastructure
       - name: Terraform Destroy
         if: github.event.action == 'closed'
-        working-directory: terraform
-        run: terraform destroy -auto-approve
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform destroy -auto-approve -input=false
 
       # Only build/deploy if creating or updating PR
       - name: Login to Amazon ECR
@@ -47,30 +55,41 @@ jobs:
 
       - name: Get ECR Repo URL
         if: github.event.action != 'closed'
-        working-directory: terraform
+        id: get-ecr-url
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
-          REPO_URL=$(terraform output -raw ecr_repository_url 2> /dev/null)
+          # Get JSON output and parse with jq
+          terraform output -json > tf_output.json
+          REPO_URL=$(jq -r '.ecr_repository_url.value' tf_output.json)
+          
+          # Validate URL format
+          if [[ ! "$REPO_URL" =~ ^[0-9]+\.dkr\.ecr\..*\.amazonaws\.com/.* ]]; then
+            echo "::error::Invalid ECR repository URL format: $REPO_URL"
+            exit 1
+          fi
+          
+          echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
           echo "REPO_URL=$REPO_URL" >> $GITHUB_ENV
+          echo "Extracted ECR URL: $REPO_URL"
 
       - name: Build and Push Docker Image
         if: github.event.action != 'closed'
         env:
           IMAGE_TAG: ${{ github.sha }}
-          REPO_URL: ${{ env.REPO_URL }}
         run: |
-          docker build -t $REPO_URL:$IMAGE_TAG -f docker/Dockerfile docker
-          docker push $REPO_URL:$IMAGE_TAG
+          docker build -t ${{ steps.get-ecr-url.outputs.repo_url }}:${{ env.IMAGE_TAG }} \
+            -f ${{ env.DOCKERFILE_PATH }} \
+            ${{ env.DOCKER_BUILD_CONTEXT }}
+          docker push ${{ steps.get-ecr-url.outputs.repo_url }}:${{ env.IMAGE_TAG }}
 
       - name: Update ECS Service to Use New Image
         if: github.event.action != 'closed'
         env:
           CLUSTER_NAME: my-fargate-cluster
           SERVICE_NAME: my-preview-service
-          IMAGE_TAG: ${{ github.sha }}
-          REPO_URL: ${{ env.REPO_URL }}
         run: |
           aws ecs update-service \
             --cluster $CLUSTER_NAME \
             --service $SERVICE_NAME \
             --force-new-deployment \
-            --region us-east-1
+            --region ${{ env.AWS_REGION }}
