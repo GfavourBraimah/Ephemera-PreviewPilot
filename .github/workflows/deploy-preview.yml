@@ -41,6 +41,18 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve -input=false
 
+      # Wait for resources to be fully ready
+      - name: Wait for ECS Cluster
+        if: github.event.action != 'closed'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          CLUSTER_NAME=$(terraform output -raw ecs_cluster_name)
+          echo "Waiting for ECS cluster to be ready..."
+          aws ecs wait services-stable \
+            --cluster $CLUSTER_NAME \
+            --services $(terraform output -raw ecs_service_name) \
+            --region ${{ env.AWS_REGION }}
+
       # If PR is closed, destroy infrastructure
       - name: Terraform Destroy
         if: github.event.action == 'closed'
@@ -53,43 +65,46 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Get ECR Repo URL
+      - name: Get Terraform Outputs
         if: github.event.action != 'closed'
-        id: get-ecr-url
+        id: tf-outputs
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
-          # Get JSON output and parse with jq
           terraform output -json > tf_output.json
-          REPO_URL=$(jq -r '.ecr_repository_url.value' tf_output.json)
+          echo "cluster_name=$(jq -r '.ecs_cluster_name.value' tf_output.json)" >> $GITHUB_OUTPUT
+          echo "service_name=$(jq -r '.ecs_service_name.value' tf_output.json)" >> $GITHUB_OUTPUT
+          echo "repo_url=$(jq -r '.ecr_repository_url.value' tf_output.json)" >> $GITHUB_OUTPUT
           
-          # Validate URL format
+          # Validate ECR URL format
+          REPO_URL=$(jq -r '.ecr_repository_url.value' tf_output.json)
           if [[ ! "$REPO_URL" =~ ^[0-9]+\.dkr\.ecr\..*\.amazonaws\.com/.* ]]; then
             echo "::error::Invalid ECR repository URL format: $REPO_URL"
             exit 1
           fi
-          
-          echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
-          echo "REPO_URL=$REPO_URL" >> $GITHUB_ENV
-          echo "Extracted ECR URL: $REPO_URL"
 
       - name: Build and Push Docker Image
         if: github.event.action != 'closed'
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t ${{ steps.get-ecr-url.outputs.repo_url }}:${{ env.IMAGE_TAG }} \
+          docker build -t ${{ steps.tf-outputs.outputs.repo_url }}:${{ env.IMAGE_TAG }} \
             -f ${{ env.DOCKERFILE_PATH }} \
             ${{ env.DOCKER_BUILD_CONTEXT }}
-          docker push ${{ steps.get-ecr-url.outputs.repo_url }}:${{ env.IMAGE_TAG }}
+          docker push ${{ steps.tf-outputs.outputs.repo_url }}:${{ env.IMAGE_TAG }}
 
-      - name: Update ECS Service to Use New Image
+      - name: Update ECS Service
         if: github.event.action != 'closed'
-        env:
-          CLUSTER_NAME: my-fargate-cluster
-          SERVICE_NAME: my-preview-service
         run: |
           aws ecs update-service \
-            --cluster $CLUSTER_NAME \
-            --service $SERVICE_NAME \
+            --cluster ${{ steps.tf-outputs.outputs.cluster_name }} \
+            --service ${{ steps.tf-outputs.outputs.service_name }} \
             --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Verify Deployment
+        if: github.event.action != 'closed'
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ steps.tf-outputs.outputs.cluster_name }} \
+            --services ${{ steps.tf-outputs.outputs.service_name }} \
             --region ${{ env.AWS_REGION }}
