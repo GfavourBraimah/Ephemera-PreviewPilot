@@ -78,9 +78,11 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t ${{ steps.tf-outputs.outputs.repo_url }}:${{ env.IMAGE_TAG }} \
-            -f ${{ env.DOCKERFILE_PATH }} \
-            ${{ env.DOCKER_BUILD_CONTEXT }}
-          docker push ${{ steps.tf-outputs.outputs.repo_url }}:${{ env.IMAGE_TAG }}
+                       -t ${{ steps.tf-outputs.outputs.repo_url }}:latest \
+                       -f ${{ env.DOCKERFILE_PATH }} \
+                       ${{ env.DOCKER_BUILD_CONTEXT }}
+                       docker push ${{ steps.tf-outputs.outputs.repo_url }}:${{ env.IMAGE_TAG }}
+                       docker push ${{ steps.tf-outputs.outputs.repo_url }}:latest
 
       - name: Update ECS Service
         if: github.event.action != 'closed'
