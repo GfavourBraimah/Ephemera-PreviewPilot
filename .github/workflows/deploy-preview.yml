@@ -41,19 +41,8 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve -input=false
 
-      # Wait for resources to be fully ready
-      - name: Wait for ECS Cluster
-        if: github.event.action != 'closed'
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        timeout-minutes: 3
-        run: |
-          CLUSTER_NAME=$(terraform output -raw ecs_cluster_name)
-          echo "Waiting for ECS cluster to be ready..."
-          aws ecs wait services-stable \
-            --cluster $CLUSTER_NAME \
-            --services $(terraform output -raw ecs_service_name) \
-            --region ${{ env.AWS_REGION }}
-
+   
+    
       # If PR is closed, destroy infrastructure
       - name: Terraform Destroy
         if: github.event.action == 'closed'
