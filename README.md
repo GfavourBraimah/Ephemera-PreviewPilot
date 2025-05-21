@@ -112,6 +112,7 @@ export AWS_DEFAULT_REGION=us-east-1
 ```
 
 ## 📸 Architecture Diagram
+![AWS Deployment Flow](Preview%20env.png)
 
 ## 🧪 Usage
 1. **Open a Pull Request.**
@@ -124,7 +125,7 @@ export AWS_DEFAULT_REGION=us-east-1
 
      - ECS deployment
 
-3. **The Public IP will be outputed to view the changes made in the pull request**
+3. **TNow go into the ECS and copy the ip address and paste it on your broswer then you will see your application**
 
 4. **On PR merge or close, the environment is automatically destroyed.**
 

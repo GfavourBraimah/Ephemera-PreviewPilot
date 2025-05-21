@@ -1,17 +1,17 @@
 variable "ecr_repository_name" {
-  default = "my-furniture-repo"
+  default = "my-app-repo"
 }
 
 variable "ecs_cluster_name" {
-  default = "my-furniture-cluster"
+  default = "my-app-cluster"
 }
 
 variable "ecs_service_name" {
-  default = "my-furniture-service"
+  default = "my-app-service"
 }
 
 variable "ecs_task_family" {
-  default = "my-furniture-task"
+  default = "my-app-task"
 }
 
 variable "image_tag" {

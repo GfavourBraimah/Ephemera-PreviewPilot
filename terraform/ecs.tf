@@ -1,4 +1,4 @@
-resource "aws_ecs_cluster" "my_furniture_cluster" {
+resource "aws_ecs_cluster" "my_app_cluster" {
   name = var.ecs_cluster_name
 }
 
@@ -29,7 +29,7 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_ecs_task_definition" "my_furniture_task" {
+resource "aws_ecs_task_definition" "my_app_task" {
   family                   = var.ecs_task_family
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -39,8 +39,8 @@ resource "aws_ecs_task_definition" "my_furniture_task" {
 
   container_definitions = jsonencode([
     {
-      name      = "my-furniture-container"
-      image     = "${aws_ecr_repository.my_furniture_repo.repository_url}:${var.image_tag}"
+      name      = "my-app-container"
+      image     = "${aws_ecr_repository.my_app_repo.repository_url}:${var.image_tag}"
       essential = true
       portMappings = [
         {
@@ -53,10 +53,10 @@ resource "aws_ecs_task_definition" "my_furniture_task" {
   ])
 }
 
-resource "aws_ecs_service" "my_furniture_service" {
+resource "aws_ecs_service" "my_app_service" {
   name            = var.ecs_service_name
-  cluster         = aws_ecs_cluster.my_furniture_cluster.id
-  task_definition = aws_ecs_task_definition.my_furniture_task.arn
+  cluster         = aws_ecs_cluster.my_app_cluster.id
+  task_definition = aws_ecs_task_definition.my_app_task.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
@@ -66,5 +66,5 @@ resource "aws_ecs_service" "my_furniture_service" {
     assign_public_ip = true
   }
 
-  depends_on = [aws_ecs_task_definition.my_furniture_task]
+  depends_on = [aws_ecs_task_definition.my_app_task]
 }

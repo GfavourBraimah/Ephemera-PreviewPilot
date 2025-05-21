@@ -4,7 +4,7 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "my-furniture-vpc"
+    Name = "my-app-vpc"
   }
 }
 
@@ -26,7 +26,7 @@ resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "my-furniture-igw"
+    Name = "my-app-igw"
   }
 }
 

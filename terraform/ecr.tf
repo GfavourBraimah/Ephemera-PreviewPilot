@@ -1,4 +1,4 @@
-resource "aws_ecr_repository" "my_furniture_repo" {
+resource "aws_ecr_repository" "my_app_repo" {
   name                 = var.ecr_repository_name
   force_delete          = true
   image_tag_mutability = "MUTABLE"
@@ -8,6 +8,6 @@ resource "aws_ecr_repository" "my_furniture_repo" {
   }
 
   tags = {
-    Name = "my-furniture-repo"
+    Name = "my-app-repo"
   }
 }
