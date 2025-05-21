@@ -110,5 +110,3 @@ jobs:
             --cluster ${{ steps.tf-outputs.outputs.cluster_name }} \
             --services ${{ steps.tf-outputs.outputs.service_name }} \
             --region ${{ env.AWS_REGION }}
-
-    
