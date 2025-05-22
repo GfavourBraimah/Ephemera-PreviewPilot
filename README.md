@@ -1,131 +1,226 @@
-# 🚀 Ephemera-PreviewPilot
+# 🚀 Push, Preview, Perfect: My Journey to Building On-Demand Preview Environments with GitHub Actions, Terraform & AWS
 
-Ephemera-PreviewPilot is an automated CI/CD pipeline designed to streamline the deployment of preview environments for pull requests. Leveraging **GitHub Actions**, **Terraform**, **AWS ECS**, and **Docker**, this project ensures that every code change is tested in an isolated environment—enhancing development workflows and collaboration.
+## 🛠 Introduction: Why I Built Ephemera-PreviewPilot
+
+Have you ever needed to test a new feature or pull request (PR), only to find yourself manually cloning the repo, spinning up the environment, and sending screenshots or localhost links for feedback?
+
+Yeah, same here.
+
+That manual loop was painful and slow—especially when explaining the same changes repeatedly to teammates who couldn’t easily visualize them.
+
+So, I thought:
+> 💡 “What if we had a live preview link automatically created for every pull request?”
+
+That's why I built **Ephemera-PreviewPilot** — a lightweight, automated system that spins up **live preview environments** for every GitHub PR. Anyone can test changes in a real cloud environment **before** merging.
 
 ---
 
-## ✨ Features
+## 🎯 What's the Goal?
 
-- **Automated Preview Environments**  
-  Deploys a unique environment for each pull request, facilitating seamless testing and feedback.
+The mission behind Ephemera-PreviewPilot is to:
 
-- **Infrastructure as Code**  
-  Utilizes Terraform for consistent and reproducible infrastructure deployments.
+- ✅ **Automate** previews for every pull request.
+- ✅ Ensure **reliable environments** that reflect real deployments.
+- ✅ Be **beginner-friendly**, so even newcomers to DevOps or CI/CD can follow along.
 
-- **Containerized Deployments**  
-  Employs Docker for building and managing application containers.
+Whether you're a solo developer or part of a team, **preview environments supercharge feedback loops**, reduce bugs, and speed up development.
 
-- **AWS Integration**  
-  Integrates with AWS ECS for scalable and reliable container orchestration.
+---
 
-- **GitHub Actions Workflow**  
-  Automates the entire deployment process, from code commit to environment teardown.
+## ❓ What Is Ephemera-PreviewPilot?
+
+A GitHub-Pull-Request-triggered CI/CD workflow that:
+
+- 💻 Deploys your app to **AWS ECS Fargate**
+- 🌐 Assigns a **public IP address** for live preview
+- 🧹 **Destroys** the preview when the PR is closed or merged
+
+No complex DNS configs or custom domains—just open your browser and paste the IP.
+
+---
+
+## 🔧 What It Does
+
+- 🚀 Automatically deploys a fresh app environment for each PR
+- 🧪 Lets anyone on your team test and interact with the live changes
+- 🔒 Keeps production safe by isolating environments
+- 💰 Cleans up infrastructure post-merge to save costs
+
+---
+
+## 🛠 Tech Stack & Tools
+
+| Tool            | Purpose                                                                 |
+|-----------------|-------------------------------------------------------------------------|
+| **GitHub Actions** | Automates the CI/CD pipeline on PR open/close                        |
+| **Terraform**       | Infrastructure-as-Code to manage AWS services                        |
+| **Docker**          | Containerizes the app for consistent behavior across environments    |
+| **AWS ECS (Fargate)** | Serverless container hosting for on-demand previews                 |
+| **AWS S3**          | Stores Terraform state files                                          |
+| **AWS DynamoDB**    | Locks Terraform state to prevent race conditions                     |
+| **Bash Scripts**    | Simplifies setup and automation for infrastructure and environment   |
 
 ---
 
 ## 📁 Project Structure
-``` bash
 
-Ephemera-PreviewPilot/
+```
+ Ephemera-PreviewPilot/
 ├── .github/
 │ └── workflows/
-│ └── preview.yml # GitHub Actions workflow for CI/CD
-├── .vscode/ # VSCode configurations
-├── docker/
-│ └── Dockerfile # Dockerfile for building the application image
-├── terraform/
-│ ├── main.tf # Main Terraform configuration
-│ ├── variables.tf # Input variables for Terraform
-│ └── outputs.tf # Output values from Terraform
-├── S3_bucket.sh # Script for managing S3 buckets
-├── create.sh # Script for initializing resources
-├── .gitignore # Specifies files to ignore in Git
-└── README.md # Project documentation
-```
-
-
----
-
-## 🔧 Component Breakdown
-
-### 📁 `.github/workflows/preview.yml`
-Defines the **GitHub Actions** workflow that automates the deployment of preview environments upon pull request events.  
-It handles:
-- Terraform initialization
-- Application build
-- Docker image push to ECR
-- ECS service update
-- Environment teardown upon PR close/merge
-
-### 📁 `docker/`
-Contains the `Dockerfile` used to build the application's Docker image.  
-Ensures a consistent runtime environment across all deployments.
-
-### 📁 `terraform/`
-Terraform configurations that provision AWS resources such as:
-- ECS clusters and services
-- Networking components (VPC, subnets)
-- S3 for Terraform state storage
-- DynamoDB for state locking
-
-### 📝 `S3_bucket.sh` & `create.sh`
-Shell scripts that:
-- Assist with AWS S3 bucket creation and management
-- Automate resource initialization
+│ └── preview.yml # GitHub Actions workflow for PR automation
+│
+├── terraform/ # Infrastructure setup using Terraform
+│ ├── main.tf
+│ ├── variables.tf
+│ └── outputs.tf
+│
+├── docker/ # Dockerized application
+│ ├── Dockerfile
+│ └── src/ # Your app's source code
+│
+├── S3_bucket.sh # Script to set up S3 and DynamoDB backend
+``` 
 
 ---
 
-## 🛠️ Prerequisites
+## ⚙️ Getting Started
 
-Before setting up the project, ensure you have the following installed:
+### ✅ Prerequisites
+
+Ensure the following tools are installed and configured:
 
 - [Git](https://git-scm.com/)
 - [Docker](https://www.docker.com/)
-- [Terraform](https://www.terraform.io/)
-- [AWS CLI](https://aws.amazon.com/cli/)
-- An **AWS account** with appropriate permissions
-- AWS credentials configured locally or as environment variables
+- [Terraform](https://developer.hashicorp.com/terraform/downloads)
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) (with configured credentials)
+- [Node.js](https://nodejs.org/)
+- An [AWS Account](https://aws.amazon.com/free/)
+
+---
+![Architecture Diagram](./images/Preview%20env.png)
 
 ---
 
-## ⚙️ Setup Instructions
+## 🔐 Add GitHub Secrets
 
-### 1. Clone the Repository
+Before running the preview deployment workflow, you must set up your **AWS credentials** securely in GitHub:
+
+1. Go to your repository on GitHub.
+2. Click **Settings** → **Secrets and variables** → **Actions**.
+3. Click **New repository secret** and add the following:
+
+   | Name               | Value                                      |
+   |--------------------|--------------------------------------------|
+   | `AWS_ACCESS_KEY_ID`     | Your AWS IAM access key ID              |
+   | `AWS_SECRET_ACCESS_KEY` | Your AWS IAM secret access key          |
+   | `AWS_REGION`            | AWS region you are deploying to (e.g. `us-east-1`) |
+
+These secrets are automatically injected into the GitHub Actions environment and used by the workflow to run `terraform`, `aws`, and `docker` commands securely.
+
+> 💡 Make sure the IAM user has the right permissions to provision and manage ECS, ECR, VPC, IAM, and S3 resources.
+
+---
+
+
+### 📥 Clone the Repository
 
 ```bash
 git clone https://github.com/GfavourBraimah/Ephemera-PreviewPilot.git
+cd Ephemera-PreviewPilot
 ```
 
-2. Configure AWS Credentials
-Option 1: AWS CLI Configuration
+# Ephemera-PreviewPilot
+
+## 🪣 Configure the Terraform Backend
+
+Open and edit the S3 bucket name:
+```bash
+nano S3_bucket.sh
+```
+
+Run the script to provision the backend:
+```bash
+./S3_bucket.sh
+```
+
+Modify terraform/backend.tf with your bucket and region:
+```hcl
+terraform {
+  backend "s3" {
+    bucket = "your-unique-s3-bucket-name"
+    key    = "terraform.tfstate"
+    region = "your-region"     # e.g., us-east-1
+    encrypt = true
+  }
+}
+```
+
+## 🐳 Add Your Application
+
+Place your application source code in: `docker/src/`
+
+Ensure your Dockerfile is configured to build from this folder.
+
+## 🚀 Trigger the Preview
 
 ```bash
-aws configure
+git checkout -b feature/my-preview-test
+git add .
+git commit -m "Add preview support"
+git push origin feature/my-preview-test
 ```
 
-Option 2: Environment Variables
+Go to GitHub and open a Pull Request.
+![PR](./images/Preview%20Env1.png)
 
-```bash
-export AWS_ACCESS_KEY_ID=your_access_key
-export AWS_SECRET_ACCESS_KEY=your_secret_key
-export AWS_DEFAULT_REGION=us-east-1
-```
 
-## 📸 Architecture Diagram
-![AWS Deployment Flow](Preview%20env.png)
 
-## 🧪 Usage
-1. **Open a Pull Request.**
+Watch the GitHub Actions workflow automatically deploy your app to AWS.
 
-2. **GitHub Actions will automatically trigger:**  
+![Architecture Diagram](./images/Preview%20Env2.png)
 
-    -  Terraform apply
+## 🌍 Access the Live Preview
 
-    - Docker image build and push
+### 🔍 Method 1: AWS Console (Recommended)
 
-     - ECS deployment
+1. Go to the AWS Console
+2. Navigate to ECS > Clusters
+3. Select your cluster (e.g., preview-cluster)
+4. Go to the Tasks tab → click the running task
+5. Scroll to Networking → click the eni-xxxx link
+6. On the EC2 Network Interface page, look for IPv4 Public IP
+7. ✅ Paste the IP in your browser — your preview app is live!
 
-3. **TNow go into the ECS and copy the ip address and paste it on your broswer then you will see your application**
+![ECS](./images/Cluster1.pngg)
+![Application](./images/src.png)
 
-4. **On PR merge or close, the environment is automatically destroyed.**
 
+## 🔁 Merge or Close the PR
+
+Merge the PR when you're happy — the preview is auto-destroyed.
+
+Close the PR if changes are not needed — the cleanup runs automatically.
+
+🧹 This keeps your infrastructure tidy and your AWS bill low.
+
+![Destroy](./images/Preview%20Env3.png)
+
+
+## 💬 Final Thoughts
+
+Ephemera-PreviewPilot has helped me:
+
+💡 Speed up feedback loops
+🛡️ Reduce bugs before merging
+🤝 Make collaboration with teammates smoother
+
+I hope it inspires you to adopt or build your own preview environments.
+
+## 📬 Let's Connect
+
+Built by God'sfavour Braimah
+
+Cloud Engineer | DevOps & DevSecOps Enthusiast | Automation Advocate
+
+Feel free to fork, star ⭐, and contribute!
