@@ -98,7 +98,7 @@ Ensure the following tools are installed and configured:
 - An [AWS Account](https://aws.amazon.com/free/)
 
 ---
-![Architecture Diagram](./images/Preview%20env.png)
+![Architecture Diagram](./images/Preeeev.drawio%20(2).png)
 
 ---
 
